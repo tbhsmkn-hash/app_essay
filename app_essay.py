@@ -1,1 +1,110 @@
-{"nbformat":4,"nbformat_minor":0,"metadata":{"colab":{"provenance":[],"mount_file_id":"1tkjleU-wjkcZBjt7IwhfNq1RVZz5VkKy","authorship_tag":"ABX9TyNWvx/gzb0YSUaDQqZazLWf"},"kernelspec":{"name":"python3","display_name":"Python 3"},"language_info":{"name":"python"}},"cells":[{"cell_type":"code","source":["#from google.colab import drive\n","#drive.mount('/content/drive')\n","#%cd /content/drive/MyDrive/Colab Notebooks/ridwan_tugas uas_smster2_\n","\n","#!pip install -r requirements.txt\n","\n","!python setup_env.py\n","\n","!chmod +x setup.sh\n","!./setup.sh\n","\n","!python setup_env.py\n","!python tuning_eval.py\n","\n","#\n","@st.cache_resource\n","def load_multimodal_model():\n","    # 1. Load konfigurasi rentang nilai skor\n","    with open(\"outputs/meta_config.json\", \"r\") as f:\n","        meta = json.load(f)\n","\n","    # 2. Inisialisasi arsitektur model\n","    # PENTING: Jika EssayScoringModel Anda membutuhkan argumen (seperti num_classes, nama model, dll),\n","    # masukkan parameternya di sini. Contoh: model = EssayScoringModel(dropout=0.1)\n","    model = EssayScoringModel()\n","\n","    # 3. Load checkpoint ke CPU\n","    checkpoint_path = \"outputs/checkpoints/baseline_best.pt\"\n","    checkpoint = torch.load(checkpoint_path, map_location=torch.device(\"cpu\"))\n","\n","    # Ekstrak model state\n","    if \"model_state\" in checkpoint:\n","        model.load_state_dict(checkpoint[\"model_state\"])\n","    else:\n","        # Jika saat saving Anda langsung menyimpan model.state_dict() tanpa dictionary pembungkus\n","        model.load_state_dict(checkpoint)\n","\n","    model.eval()\n","\n","    # 4. Ambil tokenizer dan transformator gambar dari fungsi yang baru kita tambahkan di dataset.py\n","    # Ganti string di bawah dengan model teks yang Anda pakai (misal: 'indobenchmark/indobert-base-p1')\n","    tokenizer, transform_fn = get_transforms_and_tokenizer(\"bert-base-uncased\")\n","\n","    return model, tokenizer, transform_fn, meta\n","\n","#\n","\n","import streamlit as st\n","import torch\n","import json\n","import numpy as np\n","from PIL import Image\n","from pathlib import Path\n","\n","# Impor arsitektur model Anda dari file proyek Anda\n","# Sesuaikan 'EssayScoringModel' dengan nama class model yang ada di file dataset.py Anda\n","from dataset import EssayScoringModel, get_transforms_and_tokenizer\n","\n","# ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────\n","@st.cache_resource\n","def load_multimodal_model():\n","    # Load konfigurasi rentang nilai skor\n","    with open(\"outputs/meta_config.json\", \"r\") as f:\n","        meta = json.load(f)\n","\n","    # Inisialisasi arsitektur model (Sesuaikan parameter inisialisasi jika ada)\n","    model = EssayScoringModel()\n","\n","    # Load checkpoint ke CPU (Penting agar tidak error di Streamlit Cloud)\n","    checkpoint_path = \"outputs/checkpoints/baseline_best.pt\"\n","    checkpoint = torch.load(checkpoint_path, map_location=torch.device(\"cpu\"))\n","\n","    model.load_state_dict(checkpoint[\"model_state\"])\n","    model.eval() # Set ke mode evaluasi\n","\n","    # Ambil tokenizer dan transformator gambar bawaan dari proyek Anda\n","    # (Ganti fungsi ini sesuai dengan cara Anda mendefinisikannya di dataset.py)\n","    tokenizer, transform_fn = get_transforms_and_tokenizer()\n","\n","    return model, tokenizer, transform_fn, meta\n","\n","# Muat komponen model sekali saja ke dalam memori server\n","try:\n","    model, tokenizer, transform_fn, meta_config = load_multimodal_model()\n","    score_min = meta_config[\"score_min\"]\n","    score_max = meta_config[\"score_max\"]\n","except Exception as e:\n","    st.error(f\"Gagal memuat model. Pastikan file arsitektur dan checkpoint sudah benar. Error: {e}\")\n","    st.stop()\n","\n","\n","# ── 2. ANTARMUKA APLIKASI (STREAMLIT UI) ───────────────────────────────\n","st.title(\"📝 system Multimodal Penilaian Essay\")\n","st.write(f\"Aplikasi penilai esai otomatis berbasis teks dan gambar. (Skala Nilai: {int(score_min)} - {int(score_max)})\")\n","\n","# Input 1: Teks Esai\n","essay_text = st.text_area(\"Masukkan Teks Esai di Sini:\", height=200, placeholder=\"Tuliskan jawaban esai...\")\n","\n","# Input 2: Unggah Gambar Pendukung (misal: lembar jawaban fisik/diagram)\n","uploaded_image = st.file_uploader(\"Unggah Gambar Pendukung (Opsional):\", type=[\"jpg\", \"jpeg\", \"png\"])\n","\n","\n","# ── 3. PROSES PREDIKSI MODEL ───────────────────────────────────────────\n","if st.button(\"Hitung Skor Esai\", type=\"primary\"):\n","    if not essay_text.strip():\n","        st.warning(\"Mohon masukkan teks esai terlebih dahulu!\")\n","    else:\n","        with st.spinner(\"Model sedang menganalisis esai Anda...\"):\n","            try:\n","                # A. Preprocessing Teks\n","                inputs = tokenizer(\n","                    essay_text,\n","                    return_tensors=\"pt\",\n","                    padding=\"max_length\",\n","                    truncation=True,\n","                    max_length=512 # sesuaikan dengan konfigurasi training Anda\n","                )\n","                input_ids = inputs[\"input_ids\"]\n","                attention_mask = inputs[\"attention_mask\"]\n","\n","                # B. Preprocessing Gambar\n","                if uploaded_image is not None:\n","                    image = Image.open(uploaded_image).convert(\"RGB\")\n","                    # Tampilkan gambar preview di sidebar atau bawah\n","                    st.image(image, caption=\"Gambar yang diproses\", width=300)\n","                    image_tensor = transform_fn(image).unsqueeze(0) # Tambah dimensi batch [1, C, H, W]\n","                else:\n","                    # Jika opsional dan kosong, buat tensor nol (sesuaikan dengan arsitektur model Anda)\n","                    image_tensor = torch.zeros(1, 3, 224, 224)\n","\n","                # C. Jalankan Prediksi Model (Forward Pass Tanpa Gradien)\n","                with torch.no_grad():\n","                    raw_prediction = model(image_tensor, input_ids, attention_mask)\n","                    # Konversi ke numpy float\n","                    pred_normalized = raw_prediction.squeeze().item()\n","\n","                # D. Denormalisasi Skor (Sama dengan fungsi compute_qwk di tuning_eval.py)\n","                scale = score_max - score_min\n","                final_score = np.round(pred_normalized * scale + score_min)\n","                final_score = np.clip(final_score, int(score_min), int(score_max))\n","\n","                # E. Tampilkan Hasil Ke Pengguna\n","                st.success(\"🎉 Analisis Selesai!\")\n","\n","                # Visualisasi metrik nilai dengan kolom\n","                col1, col2 = st.columns(2)\n","                with col1:\n","                    st.metric(label=\"Skor Prediksi Akhir\", value=f\"{int(final_score)} / {int(score_max)}\")\n","                with col2:\n","                    st.progress(float((final_score - score_min) / scale))\n","                    st.caption(f\"Posisi nilai dalam rentang {int(score_min)}-{int(score_max)}\")\n","\n","            except Exception as e:\n","                st.error(f\"Terjadi kesalahan saat memproses data: {e}\")\n","\n"],"metadata":{"colab":{"base_uri":"https://localhost:8080/","height":1000},"id":"1lUX4i-VlUfK","executionInfo":{"status":"error","timestamp":1780475795880,"user_tz":-420,"elapsed":31344,"user":{"displayName":"smkn2 tbh","userId":"07200044605319277931"}},"outputId":"30c366d4-b77d-403b-d13c-4eb91b28fa65"},"execution_count":null,"outputs":[{"output_type":"stream","name":"stdout","text":["=======================================================\n","  Python  : 3.12.13\n","  OS      : Linux 6.6.122+\n","=======================================================\n","  [OK] torch                     v2.11.0+cpu\n","  [OK] torchvision               v0.26.0+cpu\n","  [OK] transformers              v5.0.0\n","  [OK] scikit-learn              v1.6.1\n","  [OK] numpy                     v2.0.2\n","  [OK] pandas                    v2.2.2\n","  [OK] Pillow                    v11.3.0\n","  [OK] easyocr                   v1.7.2\n","  [OK] matplotlib                v3.10.0\n","  [OK] seaborn                   v0.13.2\n","  [OK] tqdm                      v4.67.3\n","  [OK] wandb                     v0.27.0\n","  [OK] streamlit                 v1.58.0\n","\n","  CUDA    : tidak tersedia (CPU mode)\n","\n","  Semua library siap!\n","======================================================\n","  Setup: Automated Essay Scoring — Multimodal\n","======================================================\n","[1/5] Virtual environment sudah ada, dilewati.\n","./setup.sh: line 19: .venv/bin/activate: No such file or directory\n","=======================================================\n","  Python  : 3.12.13\n","  OS      : Linux 6.6.122+\n","=======================================================\n","  [OK] torch                     v2.11.0+cpu\n","  [OK] torchvision               v0.26.0+cpu\n","  [OK] transformers              v5.0.0\n","  [OK] scikit-learn              v1.6.1\n","  [OK] numpy                     v2.0.2\n","  [OK] pandas                    v2.2.2\n","  [OK] Pillow                    v11.3.0\n","  [OK] easyocr                   v1.7.2\n","  [OK] matplotlib                v3.10.0\n","  [OK] seaborn                   v0.13.2\n","  [OK] tqdm                      v4.67.3\n","  [OK] wandb                     v0.27.0\n","  [OK] streamlit                 v1.58.0\n","\n","  CUDA    : tidak tersedia (CPU mode)\n","\n","  Semua library siap!\n","Demo evaluasi dengan data sintetis...\n","\n","Metrik (data sintetis):\n","  QWK    : 0.9421\n","  RMSE   : 0.0937\n","  Pearson: 0.9511\n","  Saved: outputs/figures/ablation_bar.png\n","Figure(800x400)\n","\n","Demo selesai. Lihat outputs/figures/\n"]},{"output_type":"error","ename":"NameError","evalue":"name 'st' is not defined","traceback":["\u001b[0;31m---------------------------------------------------------------------------\u001b[0m","\u001b[0;31mNameError\u001b[0m                                 Traceback (most recent call last)","\u001b[0;32m/tmp/ipykernel_5364/3014886187.py\u001b[0m in \u001b[0;36m<cell line: 0>\u001b[0;34m()\u001b[0m\n\u001b[1;32m     14\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     15\u001b[0m \u001b[0;31m#\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 16\u001b[0;31m \u001b[0;34m@\u001b[0m\u001b[0mst\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mcache_resource\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     17\u001b[0m \u001b[0;32mdef\u001b[0m \u001b[0mload_multimodal_model\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     18\u001b[0m     \u001b[0;31m# 1. Load konfigurasi rentang nilai skor\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n","\u001b[0;31mNameError\u001b[0m: name 'st' is not defined"]}]}]}
+import streamlit as st
+import torch
+import json
+import numpy as np
+from PIL import Image
+from pathlib import Path
+
+# Impor arsitektur model Anda dari file proyek Anda
+from dataset import EssayScoringModel, get_transforms_and_tokenizer
+
+# ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
+@st.cache_resource
+def load_multimodal_model():
+    # Load konfigurasi rentang nilai skor
+    with open("outputs/meta_config.json", "r") as f:
+        meta = json.load(f)
+
+    # Inisialisasi arsitektur model 
+    model = EssayScoringModel()
+
+    # Load checkpoint ke CPU (Penting agar tidak error di Streamlit Cloud)
+    checkpoint_path = "outputs/checkpoints/baseline_best.pt"
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+
+    if "model_state" in checkpoint:
+        model.load_state_dict(checkpoint["model_state"])
+    else:
+        model.load_state_dict(checkpoint)
+        
+    model.eval() # Set ke mode evaluasi
+
+    # Ambil tokenizer dan transformator gambar bawaan dari proyek Anda
+    # Catatan: Sesuaikan argumen jika fungsi get_transforms_and_tokenizer membutuhkan model name
+    tokenizer, transform_fn = get_transforms_and_tokenizer()
+
+    return model, tokenizer, transform_fn, meta
+
+# Muat komponen model sekali saja ke dalam memori server
+try:
+    model, tokenizer, transform_fn, meta_config = load_multimodal_model()
+    score_min = meta_config["score_min"]
+    score_max = meta_config["score_max"]
+except Exception as e:
+    st.error(f"Gagal memuat model. Pastikan file arsitektur dan checkpoint sudah benar. Error: {e}")
+    st.stop()
+
+
+# ── 2. ANTARMUKA APLIKASI (STREAMLIT UI) ───────────────────────────────
+st.title("📝 Sistem Multimodal Penilaian Essay")
+st.write(f"Aplikasi penilai esai otomatis berbasis teks dan gambar. (Skala Nilai: {int(score_min)} - {int(score_max)})")
+
+# Input 1: Teks Esai
+essay_text = st.text_area("Masukkan Teks Esai di Sini:", height=200, placeholder="Tuliskan jawaban esai...")
+
+# Input 2: Unggah Gambar Pendukung (misal: lembar jawaban fisik/diagram)
+uploaded_image = st.file_uploader("Unggah Gambar Pendukung (Opsional):", type=["jpg", "jpeg", "png"])
+
+
+# ── 3. PROSES PREDIKSI MODEL ───────────────────────────────────────────
+if st.button("Hitung Skor Esai", type="primary"):
+    if not essay_text.strip():
+        st.warning("Mohon masukkan teks esai terlebih dahulu!")
+    else:
+        with st.spinner("Model sedang menganalisis esai Anda..."):
+            try:
+                # A. Preprocessing Teks
+                inputs = tokenizer(
+                    essay_text,
+                    return_tensors="pt",
+                    padding="max_length",
+                    truncation=True,
+                    max_length=512 # sesuaikan dengan konfigurasi training Anda
+                )
+                input_ids = inputs["input_ids"]
+                attention_mask = inputs["attention_mask"]
+
+                # B. Preprocessing Gambar
+                if uploaded_image is not None:
+                    image = Image.open(uploaded_image).convert("RGB")
+                    # Tampilkan gambar preview
+                    st.image(image, caption="Gambar yang diproses", width=300)
+                    image_tensor = transform_fn(image).unsqueeze(0) # Tambah dimensi batch [1, C, H, W]
+                else:
+                    # Jika opsional dan kosong, buat tensor nol (sesuaikan dengan arsitektur model Anda)
+                    image_tensor = torch.zeros(1, 3, 224, 224)
+
+                # C. Jalankan Prediksi Model (Forward Pass Tanpa Gradien)
+                with torch.no_grad():
+                    raw_prediction = model(image_tensor, input_ids, attention_mask)
+                    # Konversi ke numpy float
+                    pred_normalized = raw_prediction.squeeze().item()
+
+                # D. Denormalisasi Skor 
+                scale = score_max - score_min
+                final_score = np.round(pred_normalized * scale + score_min)
+                final_score = np.clip(final_score, int(score_min), int(score_max))
+
+                # E. Tampilkan Hasil Ke Pengguna
+                st.success("🎉 Analisis Selesai!")
+
+                # Visualisasi metrik nilai dengan kolom
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(label="Skor Prediksi Akhir", value=f"{int(final_score)} / {int(score_max)}")
+                with col2:
+                    st.progress(float((final_score - score_min) / scale))
+                    st.caption(f"Posisi nilai dalam rentang {int(score_min)}-{int(score_max)}")
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat memproses data: {e}")
