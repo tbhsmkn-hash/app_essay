@@ -6,7 +6,7 @@ from PIL import Image
 from pathlib import Path
 
 # Impor arsitektur model Anda dari file proyek Anda
-from app_essay.dataset import EssayScoringModel, get_transforms_and_tokenizer
+from .dataset import EssayScoringModel, get_transforms_and_tokenizer
 
 # ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
 @st.cache_resource
