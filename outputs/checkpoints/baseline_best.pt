@@ -1,0 +1,18 @@
+import os
+import torch
+from model import MultimodalEssayModel
+
+# 1. Pastikan folder path sudah ada
+os.makedirs("outputs/checkpoints", exist_ok=True)
+
+# 2. Inisialisasi model dengan arsitektur yang sama
+model = MultimodalEssayModel(fusion_dim=256, dropout=0.3)
+
+# 3. Ambil state_dict (struktur bobot acak)
+dummy_checkpoint = {"model_state": model.state_dict()}
+
+# 4. Simpan ke folder tujuan
+checkpoint_path = "outputs/checkpoints/baseline_best.pt"
+torch.save(dummy_checkpoint, checkpoint_path)
+
+print(f"✅ File dummy checkpoint berhasil dibuat di: {checkpoint_path}")
