@@ -214,5 +214,22 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# ── Kustomisasi Proyek ML & Streamlit ──
+# Sembunyikan dataset mentah jika disimpan di folder proyek
+data/
+datasets/
+*.csv
+*.xlsx
+
+# Sembunyikan file log dari Weights & Biases (W&B)
+wandb/
+
+# Sembunyikan file konfigurasi lokal Streamlit
+.streamlit/
+
+# JIKA file model .pt Anda sangat besar dan tidak memakai Git LFS,
+# buka tanda pagar di bawah untuk mencegah file tersebut terunggah ke GitHub:
+# outputs/checkpoints/
+
 # Streamlit
 .streamlit/secrets.toml
