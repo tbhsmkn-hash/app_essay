@@ -19,26 +19,23 @@ from dataset import get_transforms_and_tokenizer
 from model import MultimodalEssayModel
 
 # ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
-@st.cache_resource
-def load_multimodal_model():
-    # Load konfigurasi rentang nilai skor
-    with open("outputs/meta_config.json", "r") as f:
-        meta = json.load(f)
+# Inisialisasi model
+    from model import MultimodalEssayModel
 
-    # Inisialisasi arsitektur model 
-    model = EssayScoringModel()
+    model = MultimodalEssayModel(fusion_dim=256, dropout=0.3)
 
-    # Load checkpoint ke CPU (Penting agar tidak error di Streamlit Cloud)
-    checkpoint_path = "outputs/checkpoints/baseline_best.pt"
+    if not checkpoint_path.exists():
+        st.error(f"File checkpoint model tidak ditemukan di: {checkpoint_path}")
+        st.stop()
+
     checkpoint = torch.load(checkpoint_path, map_location=torch.device("cpu"))
 
     if "model_state" in checkpoint:
         model.load_state_dict(checkpoint["model_state"])
     else:
         model.load_state_dict(checkpoint)
-        
-    model.eval() # Set ke mode evaluasi
 
+    model.eval()
     # Ambil tokenizer dan transformator gambar bawaan dari proyek Anda
     # Catatan: Sesuaikan argumen jika fungsi get_transforms_and_tokenizer membutuhkan model name
     tokenizer, transform_fn = get_transforms_and_tokenizer()
