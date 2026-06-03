@@ -4,9 +4,16 @@ import json
 import numpy as np
 from PIL import Image
 from pathlib import Path
+import sys
+import os
 
-# Impor arsitektur model Anda dari file proyek Anda
-from .dataset import EssayScoringModel, get_transforms_and_tokenizer
+# --- PAKSA PYTHON UNTUK MEMBACA DIREKTORI ROOT ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+# Sekarang Anda bisa melakukan import tanpa error
+from dataset import EssayScoringModel, get_transforms_and_tokenizer
 
 # ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
 @st.cache_resource
