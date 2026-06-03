@@ -1,12 +1,13 @@
 import streamlit as st
 import torch
+from pathlib import Path
 import json
 import numpy as np
 from PIL import Image
 from pathlib import Path
 import sys
 import os
-
+BASE_DIR = Path(__file__).resolve().parent
 # --- PAKSA PYTHON UNTUK MEMBACA DIREKTORI ROOT ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
