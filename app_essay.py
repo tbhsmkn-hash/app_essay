@@ -13,7 +13,7 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 
 # Sekarang Anda bisa melakukan import tanpa error
-from dataset import EssayScoringModel, get_transforms_and_tokenizer
+from dataset import MultimodalEssayModel, get_transforms_and_tokenizer
 
 # ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
 @st.cache_resource
