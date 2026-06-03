@@ -7,18 +7,33 @@ from PIL import Image
 from pathlib import Path
 import sys
 import os
+
 BASE_DIR = Path(__file__).resolve().parent
 # --- PAKSA PYTHON UNTUK MEMBACA DIREKTORI ROOT ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-# Sekarang Anda bisa melakukan import tanpa error
-# Sekarang Anda bisa melakukan import tanpa error                         
 from dataset import get_transforms_and_tokenizer
 from model import MultimodalEssayModel
 
 # ── 1. CONFIG & LOAD MODEL (DI-CACHE) ──────────────────────────────────
+@st.cache_resource
+def load_multimodal_model():
+    # Menggabungkan path dengan aman menggunakan pathlib
+    config_path = BASE_DIR / "outputs" / "meta_config.json"
+    checkpoint_path = BASE_DIR / "outputs" / "checkpoints" / "baseline_best.pt"
+
+    # Validasi sebelum membaca file untuk menghindari crash mentah
+    if not config_path.exists():
+        st.error(
+            f"File konfigurasi tidak ditemukan di lokasi: {config_path}. "
+            "Pastikan folder 'outputs' sudah di-push ke GitHub."
+        )
+        st.stop()
+
+    with open(config_path, "r") as f:
+        meta = json.load(f)
 # Inisialisasi model
     from model import MultimodalEssayModel
 
